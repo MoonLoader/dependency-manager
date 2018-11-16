@@ -213,7 +213,7 @@ function builtin.run(rockspec)
          def:write("EXPORTS\n")
          def:write("luaopen_"..exported_name.."\n")
          def:close()
-         local ok = execute(variables.LD, "-dll", "-def:"..deffile, "-out:"..library, dir.path(variables.LUA_LIBDIR, variables.LUALIB), unpack(extras))
+         local ok = execute(variables.LD, "-dll", "-subsystem:windows,5.01", "-def:"..deffile, "-out:"..library, dir.path(variables.LUA_LIBDIR, variables.LUALIB), unpack(extras))
          local basedir = ""
          if name:find("%.") ~= nil then
             basedir = name:gsub("%.%w+$", "\\")
