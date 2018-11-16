@@ -163,6 +163,10 @@ function search.search_repos(query, lua_version)
             end
          end
       end
+      -- we have conforming result, stop searching
+      if next(result_tree) then
+         break
+      end
    end
    -- search through rocks in cfg.rocks_provided
    local provided_repo = "provided by VM or rocks_provided"
