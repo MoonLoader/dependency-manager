@@ -603,7 +603,7 @@ function cfg.init(lua_data, project_dir, warning)
       processor = hardcoded.PROCESSOR
    end
 
-   if system == "windows" then
+   if system == "windows" and not hardcoded.SYSTEM then
       if os.getenv("VCINSTALLDIR") then
          -- running from the Development Command prompt for VS 2017
          system = "windows"
