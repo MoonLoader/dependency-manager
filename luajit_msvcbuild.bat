@@ -75,13 +75,13 @@ buildvm -m folddef -o lj_folddef.h lj_opt_fold.c
 @if "%1" neq "debug" goto :NODEBUG
 @shift
 @set LJCOMPILE=%LJCOMPILE% /Zi
-@set LJLINK=%LJLINK% /SUBSYSTEM:CONSOLE,5.01 /debug /opt:ref /opt:icf /incremental:no
+@set LJLINK=%LJLINK% /debug /opt:ref /opt:icf /incremental:no
 :NODEBUG
 @if "%1"=="amalg" goto :AMALGDLL
 @if "%1"=="static" goto :STATIC
 %LJCOMPILE% /MD /DLUA_BUILD_AS_DLL lj_*.c lib_*.c
 @if errorlevel 1 goto :BAD
-%LJLINK% /DLL /out:%LJDLLNAME% lj_*.obj lib_*.obj
+%LJLINK% /SUBSYSTEM:WINDOWS,5.01 /DLL /out:%LJDLLNAME% lj_*.obj lib_*.obj
 @if errorlevel 1 goto :BAD
 @goto :MTDLL
 :STATIC
@@ -93,7 +93,7 @@ buildvm -m folddef -o lj_folddef.h lj_opt_fold.c
 :AMALGDLL
 %LJCOMPILE% /MD /DLUA_BUILD_AS_DLL ljamalg.c
 @if errorlevel 1 goto :BAD
-%LJLINK% /DLL /out:%LJDLLNAME% ljamalg.obj lj_vm.obj
+%LJLINK% /SUBSYSTEM:WINDOWS,5.01 /DLL /out:%LJDLLNAME% ljamalg.obj lj_vm.obj
 @if errorlevel 1 goto :BAD
 :MTDLL
 if exist %LJDLLNAME%.manifest^
@@ -101,7 +101,7 @@ if exist %LJDLLNAME%.manifest^
 
 %LJCOMPILE% /MD luajit.c
 @if errorlevel 1 goto :BAD
-%LJLINK% /out:luajit.exe luajit.obj %LJLIBNAME%
+%LJLINK% /SUBSYSTEM:CONSOLE,5.01 /out:luajit.exe luajit.obj %LJLIBNAME%
 @if errorlevel 1 goto :BAD
 if exist luajit.exe.manifest^
   %LJMT% -manifest luajit.exe.manifest -outputresource:luajit.exe
