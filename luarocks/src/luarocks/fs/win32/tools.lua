@@ -7,6 +7,7 @@ local tools = {}
 local fs = require("luarocks.fs")
 local dir = require("luarocks.dir")
 local cfg = require("luarocks.core.cfg")
+local util = require("luarocks.util")
 
 local vars = setmetatable({}, { __index = function(_,k) return cfg.variables[k] end })
 
@@ -237,9 +238,22 @@ end
 -- @param scope string ("user" or "all"): the user(s) to whom the permission applies
 -- @return boolean or (boolean, string): true on success, false on failure,
 -- plus an error message
+local disable_set_permissions
 function tools.set_permissions(filename, mode, scope)
    assert(filename and mode and scope)
-
+   -- TODO: fix set_permissions
+   if disable_set_permissions then
+      return true
+   end
+   if disable_set_permissions == nil then
+      if io.popen(vars.ICACLS .. " /?"):read() and io.popen("takeown /?"):read() then
+         disable_set_permissions = false
+      else
+         disable_set_permissions = true
+         util.warning('Modifying permissions is unavailable for your system')
+         return true
+      end
+   end
    if scope == "user" then
       local perms
       if mode == "read" then
