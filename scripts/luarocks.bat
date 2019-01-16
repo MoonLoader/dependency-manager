@@ -10,7 +10,7 @@ IF NOT "%LUA_PATH_5_2%"=="" (
 IF NOT "%LUA_PATH_5_3%"=="" (
    SET "LUA_PATH_5_3=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;%LUA_PATH_5_3%"
 )
-SET "PATH=%LUAROCKS_PATH%;%PATH%"
+REM SET "PATH=%LUAROCKS_PATH%;%PATH%"
 "%~dp0..\luajit\bin\luajit.exe" "%LUAROCKS_PATH%luarocks.lua" %*
 SET EXITCODE=%ERRORLEVEL%
 IF NOT "%EXITCODE%"=="2" GOTO EXITLR

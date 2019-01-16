@@ -26,9 +26,9 @@ pushd distro
 call luajit\lua -e "require'deps'"
 cd luarocks
 
-SET "LRFLAGS=--tree=system --only-server=http://luarocks.org/manifests/fyp"
+SET "LRFLAGS=--tree=libstd --only-server=http://luarocks.org/manifests/fyp"
 call luarocks install luafilesystem 1.7.0-2 %LRFLAGS%
-call luarocks install mimetypes 1.0.0-2 --tree=system
+call luarocks install mimetypes 1.0.0-2 --tree=libstd
 call luarocks install luasocket 3.0rc1-2 %LRFLAGS%
 call luarocks install md5 1.2-1 %LRFLAGS%
 call luarocks install lzlib 0.4.1.53-1 %LRFLAGS%

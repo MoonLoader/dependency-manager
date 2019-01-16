@@ -67,7 +67,7 @@ end
 local luarocks_luapath = config.PREFIX .. [[\lua\?.lua;]] .. config.PREFIX .. [[\lua\?\init.lua]]
 local function run_luarocks(cmd)
 	local interpreter = config.LUA_BINDIR .. '\\' .. config.LUA_INTERPRETER
-	local luarocks_cmd = ('"%s" "-e package.path=[[%s]]" "%s\\luarocks.lua" --tree=system %s 2>&1'):format(interpreter, luarocks_luapath, config.PREFIX, cmd)
+	local luarocks_cmd = ('"%s" "-e package.path=[[%s]]" "%s\\luarocks.lua" --tree=lib %s 2>&1'):format(interpreter, luarocks_luapath, config.PREFIX, cmd)
 	local proc = io.popen(luarocks_cmd)
 	local output = proc:read('*all')
 	local result = proc:close()
@@ -109,15 +109,6 @@ local function init_luarocks()
 		return nil, err
 	end
 	luarocks.fs.init()
-	if doesFileExist and doesDirectoryExist then
-		-- replace a couple of FS functions to avoid popping up console windows
-		luarocks.fs.current_dir = function()
-			return workdir
-		end
-		luarocks.fs.exists = function(path)
-			return doesFileExist(path) or doesDirectoryExist(path)
-		end
-	end
 	package.path = luapath
 	return luarocks
 end
