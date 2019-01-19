@@ -238,10 +238,10 @@ end
 -- @param scope string ("user" or "all"): the user(s) to whom the permission applies
 -- @return boolean or (boolean, string): true on success, false on failure,
 -- plus an error message
-local disable_set_permissions
+-- TODO: use module
+local disable_set_permissions = true
 function tools.set_permissions(filename, mode, scope)
    assert(filename and mode and scope)
-   -- TODO: fix set_permissions
    if disable_set_permissions then
       return true
    end
