@@ -152,7 +152,11 @@ local function msgbox(text, title, style)
 		ffi = require 'ffi'
 		ffi.cdef [[int MessageBoxA(void* hWnd, const char* lpText, const char* lpCaption, unsigned int uType);]]
 	end
-	local hwnd = ffi.cast('void*', readMemory(0x00C8CF88, 4, false))
+	local hwnd = nil
+	if readMemory then
+		-- game window
+		hwnd = ffi.cast('void*', readMemory(0x00C8CF88, 4, false))
+	end
 	return ffi.C.MessageBoxA(hwnd, text, '[MoonLoader] ' .. script.this.filename .. ': ' .. title, style and (style + 0x50000) or 0x50000)
 end
 
