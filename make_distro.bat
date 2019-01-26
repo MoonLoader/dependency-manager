@@ -18,6 +18,7 @@ robocopy luarocks\win32\ distro\luarocks\ luarocksw.bat
 robocopy luarocks\win32\tools distro\luarocks\tools\ /E
 xcopy luarocks\src\bin\* distro\luarocks\*.lua
 md distro\luarocks\systree
+md distro\luarocks\usertree
 
 if /I "%1"=="without-modules" goto :EOF
 
