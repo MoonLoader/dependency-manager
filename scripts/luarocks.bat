@@ -2,13 +2,14 @@
 SETLOCAL ENABLEDELAYEDEXPANSION ENABLEEXTENSIONS
 
 SET "LUAROCKS_PATH=%~dp0"
-
-SET "LUA_PATH=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;%LUA_PATH%"
-IF NOT "%LUA_PATH_5_2%"=="" (
-   SET "LUA_PATH_5_2=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;%LUA_PATH_5_2%"
+IF "%LUA_PATH%"=="" (
+	SET "LUA_PATH=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;.\?.lua;.\?\init.lua"
 )
-IF NOT "%LUA_PATH_5_3%"=="" (
-   SET "LUA_PATH_5_3=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;%LUA_PATH_5_3%"
+ELSE (
+	SET "LUA_PATH=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;%LUA_PATH%"
+)
+IF "%LUA_CPATH%"=="" (
+	SET "LUA_CPATH=.\?.dll"
 )
 REM SET "PATH=%LUAROCKS_PATH%;%PATH%"
 "%~dp0..\luajit\bin\luajit.exe" "%LUAROCKS_PATH%luarocks.lua" %*
