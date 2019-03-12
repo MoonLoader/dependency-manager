@@ -157,7 +157,7 @@ local function msgbox(text, title, style)
 		-- game window
 		hwnd = ffi.cast('void*', readMemory(0x00C8CF88, 4, false))
 	end
-	return ffi.C.MessageBoxA(hwnd, text, '[MoonLoader] ' .. script.this.filename .. ': ' .. title, style and (style + 0x50000) or 0x50000)
+	return ffi.C.MessageBoxA(hwnd, text, '[MoonLoader] ' .. script.this.filename .. ': ' .. title, (style or 0) + 0x50000)
 end
 
 local function failure(msg)
@@ -166,6 +166,7 @@ local function failure(msg)
 end
 
 local function batch_install(packages)
+	print('Requested packages: ' .. table.concat(packages, ', '))
 	local to_install = {}
 	local time_test, time_install = os.clock(), nil
 	for i, dep in ipairs(packages) do
@@ -187,7 +188,7 @@ local function batch_install(packages)
 		if 7 --[[IDNO]] == msgbox('Script "' .. script.this.filename .. '" asks to install the following packages:\n\n' ..
 			list .. '\nInstallation process will take some time.\nProceed?', 'Package installation', 0x04 + 0x20 --[[MB_YESNO+MB_ICONQUESTION]])
 		then
-			error('dependency installation was interrupted by user')
+			error('Dependency installation was interrupted by user')
 		end
 		time_install = os.clock()
 		for i, pkg in ipairs(to_install) do
