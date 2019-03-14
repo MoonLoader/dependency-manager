@@ -4,8 +4,7 @@ SETLOCAL ENABLEDELAYEDEXPANSION ENABLEEXTENSIONS
 SET "LUAROCKS_PATH=%~dp0"
 IF "%LUA_PATH%"=="" (
 	SET "LUA_PATH=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;.\?.lua;.\?\init.lua"
-)
-ELSE (
+) ELSE (
 	SET "LUA_PATH=%LUAROCKS_PATH%lua\?.lua;%LUAROCKS_PATH%lua\?\init.lua;%LUA_PATH%"
 )
 IF "%LUA_CPATH%"=="" (
