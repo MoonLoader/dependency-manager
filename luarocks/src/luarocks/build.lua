@@ -12,40 +12,15 @@ local cfg = require("luarocks.core.cfg")
 local repos = require("luarocks.repos")
 local writer = require("luarocks.manif.writer")
 
-local opts_mt = {}
-
-opts_mt.__index = opts_mt
-
-function opts_mt.type()
-   return "build.opts"
-end
-
-function build.opts(opts)
-   local valid_opts = {
-      need_to_fetch = "boolean",
-      minimal_mode = "boolean",
-      deps_mode = "string",
-      build_only_deps = "boolean",
-      namespace = "string?",
-      branch = "boolean",
-   }
-   for k, v in pairs(opts) do
-      local tv = type(v)
-      if not valid_opts[k] then
-         error("invalid build option: "..k)
-      end
-      local vo, optional = valid_opts[k]:match("^(.-)(%??)$")
-      if not (tv == vo or (optional == "?" and tv == nil)) then
-         error("invalid type build option: "..k.." - got "..tv..", expected "..vo)
-      end
-   end
-   for k, v in pairs(valid_opts) do
-      if (not v:find("?", 1, true)) and opts[k] == nil then
-         error("missing build option: "..k)
-      end
-   end
-   return setmetatable(opts, opts_mt)
-end
+build.opts = util.opts_table("build.opts", {
+   need_to_fetch = "boolean",
+   minimal_mode = "boolean",
+   deps_mode = "string",
+   build_only_deps = "boolean",
+   namespace = "string?",
+   branch = "boolean",
+   verify = "boolean",
+})
 
 do
    --- Write to the current directory the contents of a table,
@@ -68,6 +43,16 @@ do
    function build.apply_patches(rockspec)
       assert(rockspec:type() == "rockspec")
 
+      if not (rockspec.build.extra_files or rockspec.build.patches) then
+         return true
+      end
+
+      local fd = io.open(fs.absolute_name(".luarocks.patches.applied"), "r")
+      if fd then
+         fd:close()
+         return true
+      end
+
       if rockspec.build.extra_files then
          extract_from_rockspec(rockspec.build.extra_files)
       end
@@ -81,6 +66,11 @@ do
                return nil, "Failed applying patch "..patch
             end
          end
+      end
+
+      fd = io.open(fs.absolute_name(".luarocks.patches.applied"), "w")
+      if fd then
+         fd:close()
       end
       return true
    end
@@ -105,8 +95,8 @@ local function check_macosx_deployment_target(rockspec)
       if targetminor > versionminor then
          return nil, ("This rock requires Mac OSX 10.%d, and you are running 10.%d."):format(targetminor, versionminor)
       end
-      patch_variable("CC", target)
-      patch_variable("LD", target)
+      patch_variable("CC")
+      patch_variable("LD")
    end
    return true
 end
@@ -130,13 +120,13 @@ local function process_dependencies(rockspec, opts)
    end
    if not opts.build_only_deps then
       if next(rockspec.build_dependencies) then
-         local ok, err, errcode = deps.fulfill_dependencies(rockspec, "build_dependencies", opts.deps_mode)
+         local ok, err, errcode = deps.fulfill_dependencies(rockspec, "build_dependencies", opts.deps_mode, opts.verify)
          if err then
             return nil, err, errcode
          end
       end
    end
-   local ok, err, errcode = deps.fulfill_dependencies(rockspec, "dependencies", opts.deps_mode)
+   local ok, err, errcode = deps.fulfill_dependencies(rockspec, "dependencies", opts.deps_mode, opts.verify)
    if err then
       return nil, err, errcode
    end
@@ -399,10 +389,8 @@ function build.build_rockspec(rockspec, opts)
       fs.remove_dir_if_empty(path.versions_dir(name))
    end)
 
-   if not opts.minimal_mode then
-      local ok, err = build.apply_patches(rockspec)
-      if not ok then return nil, err end
-   end
+   ok, err = build.apply_patches(rockspec)
+   if not ok then return nil, err end
    
    ok, err = check_macosx_deployment_target(rockspec)
    if not ok then return nil, err end

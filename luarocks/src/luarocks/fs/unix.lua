@@ -97,13 +97,14 @@ function unix.wrap_script(script, target, deps_mode, name, version, ...)
 
    local argv = {
       fs.Q(dir.path(cfg.variables["LUA_BINDIR"], cfg.lua_interpreter)),
+      "-e",
+      fs.Q(table.concat(luainit, ";")),
       script and fs.Q(script) or "",
       ...
    }
 
    wrapper:write("#!/bin/sh\n\n")
    wrapper:write("LUAROCKS_SYSCONFDIR="..fs.Q(cfg.sysconfdir) .. " ")
-   wrapper:write("LUA_INIT="..fs.Q(table.concat(luainit, ";")).." ")
    wrapper:write("exec "..table.concat(argv, " ")..' "$@"\n')
    wrapper:close()
 
@@ -203,6 +204,53 @@ function unix._unix_moderate_permissions(perms)
       moderated_perms = moderated_perms .. rwx_to_octal[new_perm]
    end
    return moderated_perms
+end
+
+function unix.is_dir(file)
+   file = fs.absolute_name(file)
+   file = dir.normalize(file) .. "/"
+   local fd, _, code = io.open(file, "r")
+   if code == 2 then -- "No such file or directory"
+      return false
+   end
+   if code == 20 then -- "Not a directory", regardless of permissions
+      return false
+   end
+   if code == 13 then -- "Permission denied", but is a directory
+      return true
+   end
+   if fd then
+      fd:close()
+      return true
+   end
+   return false
+end
+
+function unix.is_file(file)
+   file = fs.absolute_name(file)
+   if fs.is_dir(file) then
+      return false
+   end
+   file = dir.normalize(file)
+   local fd, _, code = io.open(file, "r")
+   if code == 2 then -- "No such file or directory"
+      return false
+   end
+   if code == 13 then -- "Permission denied", but it exists
+      return true
+   end
+   if fd then
+      fd:close()
+      return true
+   end
+   return false
+end
+
+function unix.system_cache_dir()
+   if fs.is_dir("/var/cache") then
+      return "/var/cache"
+   end
+   return dir.path(fs.system_temp_dir(), "cache")
 end
 
 return unix

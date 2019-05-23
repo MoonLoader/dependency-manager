@@ -11,11 +11,10 @@ local multipart = require("luarocks.upload.multipart")
 local Api = {}
 
 local function upload_config_file()
-   local conf = cfg.which_config()
-   if not conf.user.file then
+   if not cfg.config_files.user.file then
       return nil
    end
-   return (conf.user.file:gsub("/[^/]+$", "/upload_config.lua"))
+   return (cfg.config_files.user.file:gsub("/[^/]+$", "/upload_config.lua"))
 end
 
 function Api:load_config()
@@ -109,27 +108,6 @@ local function encode_query_string(t, sep)
    return table.concat(buf)
 end
 
--- An ode to the multitude of JSON libraries out there...
-local function require_json()
-   local list = { "cjson", "dkjson", "json" }
-   for _, lib in ipairs(list) do
-      local json_ok, json = pcall(require, lib)
-      if json_ok then
-         pcall(json.use_lpeg) -- optional feature in dkjson
-         return json_ok, json
-      end
-   end
-   local errmsg = "Failed loading "
-   for i, name in ipairs(list) do
-      if i == #list then
-         errmsg = errmsg .."and '"..name.."'. Use 'luarocks search <partial-name>' to search for a library and 'luarocks install <name>' to install one."
-      else
-         errmsg = errmsg .."'"..name.."', "
-      end
-   end
-   return nil, errmsg
-end
-
 local function redact_api_url(url)
    url = tostring(url)
    return (url:gsub(".*/api/[^/]+/[^/]+", "")) or ""
@@ -140,7 +118,7 @@ if not ltn12_ok then -- If not using LuaSocket and/or LuaSec...
 
 function Api:request(url, params, post_params)
    local vars = cfg.variables
-   local json_ok, json = require_json()
+   local json_ok, json = util.require_json()
    if not json_ok then return nil, "A JSON library is required for this command. "..json end
    
    if fs.which_tool("downloader") == "wget" then
@@ -161,7 +139,7 @@ function Api:request(url, params, post_params)
    local tmpfile = fs.tmpname()
    if post_params then
       method = "POST"
-      local curl_cmd = fs.Q(vars.CURL).." -f -k -L --silent --user-agent \""..cfg.user_agent.." via curl\" "
+      local curl_cmd = vars.CURL.." -f -k -L --silent --user-agent \""..cfg.user_agent.." via curl\" "
       for k,v in pairs(post_params) do
          local var = v
          if type(v) == "table" then
@@ -204,7 +182,7 @@ else -- use LuaSocket and LuaSec
 local warned_luasec = false
 
 function Api:request(url, params, post_params)
-   local json_ok, json = require_json()
+   local json_ok, json = util.require_json()
    if not json_ok then return nil, "A JSON library is required for this command. "..json end
    local server = tostring(self.config.server)
    local http_ok, http
@@ -258,10 +236,11 @@ function Api:request(url, params, post_params)
    if self.debug then
       util.printout(tostring(status))
    end
-   if status ~= 200 then
-      return nil, "API returned " .. tostring(status) .. " - " .. redact_api_url(url)
+   local pok, ret, err = pcall(json.decode, table.concat(out))
+   if pok and ret then
+      return ret
    end
-   return json.decode(table.concat(out))
+   return nil, "API returned " .. tostring(status) .. " - " .. redact_api_url(url)
 end
 
 end
