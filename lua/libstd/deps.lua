@@ -203,9 +203,12 @@ local function batch_install(packages)
 	-- DEBUG
 	local dbgmsg = ('[DEBUG] Installed check took %.3fs.'):format(time_test)
 	if #to_install > 0 then
-		dbgmsg = dbgmsg .. (' Installation of %d packages took %.2fs. Total %.2fs.'):format(#to_install, time_install, time_test + time_install)
+		logdebug(dbgmsg, ('Installation of %d packages took %.2fs. Total %.2fs.'):format(#to_install, time_install, time_test + time_install))
+		-- v.027 feature: suspend main thread until all scripts are loaded
+		coroutine.yield()
+	else
+		logdebug(dbgmsg)
 	end
-	print(dbgmsg)
 end
 
 -- API
