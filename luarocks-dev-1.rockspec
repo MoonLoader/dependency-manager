@@ -1,9 +1,8 @@
 rockspec_format = "3.0"
 package = "luarocks"
-version = "3.0.4-1"
+version = "dev-1"
 source = {
    url = "git+https://github.com/luarocks/luarocks",
-   tag = "v3.0.4",
 }
 description = {
    summary = "A package manager for Lua modules.",

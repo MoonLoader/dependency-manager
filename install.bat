@@ -67,8 +67,17 @@ local function exec(cmd)
 end
 
 local function exists(filename)
-	local cmd = [[.\win32\tools\test -e "]]..filename..[["]]
-	return exec(cmd)
+	local fd, _, code = io.open(filename, "r")
+	if code == 13 then
+		-- code 13 means "Permission denied" on both Unix and Windows
+		-- io.open on folders always fails with code 13 on Windows
+		return true
+	end
+	if fd then
+		fd:close()
+		return true
+	end
+	return false
 end
 
 local function mkdir (dir)
@@ -520,7 +529,7 @@ local function get_msvc_env_setup_cmd()
 		end
 
 		-- try vcvarsall.bat in case MS changes the undocumented bat files above.
-		-- but this way we don't konw if specified compiler is installed...
+		-- but this way we don't know if specified compiler is installed...
 		local vcvarsall = vcdir .. 'vcvarsall.bat'
 		if exists(vcvarsall) then
 			local vcvarsall_args = { x86 = "", x86_64 = " amd64" }
@@ -1126,7 +1135,7 @@ end
 -- ***********************************************************
 -- Cleanup
 -- ***********************************************************
--- remove regsitry related files, no longer needed
+-- remove registry related files, no longer needed
 exec( S[[del "$PREFIX\LuaRocks.reg.*" >NUL]] )
 
 -- ***********************************************************

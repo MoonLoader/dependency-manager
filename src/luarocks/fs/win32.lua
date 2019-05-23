@@ -146,32 +146,34 @@ function win32.wrap_script(script, target, deps_mode, name, version, ...)
    end
 
    local lpath, lcpath = path.package_paths(deps_mode)
-   local lpath_var, lcpath_var = util.lua_path_variables()
 
-   local addctx
+   local luainit = {
+      "package.path="..util.LQ(lpath..";").."..package.path",
+      "package.cpath="..util.LQ(lcpath..";").."..package.cpath",
+   }
+   if target == "luarocks" or target == "luarocks-admin" then
+      luainit = {
+         "package.path="..util.LQ(package.path),
+         "package.cpath="..util.LQ(package.cpath),
+      }
+   end
    if name and version then
-      addctx = "local k,l,_=pcall(require,'luarocks.loader') _=k " ..
+      local addctx = "local k,l,_=pcall(require,'luarocks.loader') _=k " ..
                      "and l.add_context('"..name.."','"..version.."')"
+      table.insert(luainit, addctx)
    end
 
    local argv = {
       fs.Qb(dir.path(cfg.variables["LUA_BINDIR"], cfg.lua_interpreter)),
+      "-e",
+      fs.Qb(table.concat(luainit, ";")),
       script and fs.Qb(script) or "",
       ...
    }
 
    wrapper:write("@echo off\r\n")
+   wrapper:write("setlocal\r\n")
    wrapper:write("set "..fs.Qb("LUAROCKS_SYSCONFDIR="..cfg.sysconfdir) .. "\r\n")
-   if target == "luarocks" or target == "luarocks-admin" then
-      wrapper:write("set "..fs.Qb(lpath_var.."="..package.path) .. "\r\n")
-      wrapper:write("set "..fs.Qb(lcpath_var.."="..package.cpath) .. "\r\n")
-   else
-      wrapper:write("set "..fs.Qb(lpath_var.."="..lpath..";%"..lpath_var.."%") .. "\r\n")
-      wrapper:write("set "..fs.Qb(lcpath_var.."="..lcpath..";%"..lcpath_var.."%") .. "\r\n")
-   end
-   if addctx then
-      wrapper:write("set "..fs.Qb("LUA_INIT=" .. addctx) .. "\r\n")
-   end
    wrapper:write(table.concat(argv, " ") .. " %*\r\n")
    wrapper:write("exit /b %ERRORLEVEL%\r\n")
    wrapper:close()
@@ -208,15 +210,6 @@ function win32.copy_binary(filename, dest)
    return true
 end
 
-function win32.attributes(filename, attrtype)
-   if attrtype == "permissions" then
-      return "" -- FIXME
-   elseif attrtype == "owner" then
-      return os.getenv("USERNAME") -- FIXME popen_read('powershell -Command "& {(get-acl '..filename..').owner}"'):gsub("^[^\\]*\\", "")
-   end
-   return nil
-end
-
 --- Move a file on top of the other.
 -- The new file ceases to exist under its original name,
 -- and takes over the name of the old file.
@@ -231,6 +224,41 @@ end
 function win32.replace_file(old_file, new_file)
    os.remove(old_file)
    return os.rename(new_file, old_file)
+end
+
+function win32.is_dir(file)
+   file = fs.absolute_name(file)
+   file = dir.normalize(file)
+   local fd, _, code = io.open(file, "r")
+   if code == 13 then -- directories return "Permission denied"
+      fd, _, code = io.open(file .. "\\", "r")
+      if code == 2 then -- directories return 2, files return 22
+         return true
+      end
+   end
+   if fd then
+      fd:close()
+   end
+   return false
+end
+
+function win32.is_file(file)
+   file = fs.absolute_name(file)
+   file = dir.normalize(file)
+   local fd, _, code = io.open(file, "r")
+   if code == 13 then -- if "Permission denied"
+      fd, _, code = io.open(file .. "\\", "r")
+      if code == 2 then -- directories return 2, files return 22
+         return false
+      elseif code == 22 then
+         return true
+      end
+   end
+   if fd then
+      fd:close()
+      return true
+   end
+   return false
 end
 
 --- Test is file/dir is writable.
@@ -291,6 +319,10 @@ end
 
 function win32.export_cmd(var, val)
    return ("SET %s=%s"):format(var, val)
+end
+
+function win32.system_cache_dir()
+   return dir.path(fs.system_temp_dir(), "cache")
 end
 
 return win32

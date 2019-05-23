@@ -436,6 +436,7 @@ local function create_env(testing_paths)
    end
    
    local env_variables = {}
+   env_variables.GNUPGHOME = testing_paths.gpg_dir
    env_variables.LUA_VERSION = luaversion_short
    env_variables.LUAROCKS_CONFIG = testing_paths.testrun_dir .. "/testing_config.lua"
    if test_env.TEST_TARGET_OS == "windows" then
@@ -593,6 +594,7 @@ local function create_paths(luaversion_full)
    end
 
    testing_paths.fixtures_dir = base_dir .. "/spec/fixtures"
+   testing_paths.gpg_dir = testing_paths.fixtures_dir .. "/gpg"
    testing_paths.fixtures_repo_dir = base_dir .. "/spec/fixtures/a_repo"
    testing_paths.util_dir = base_dir .. "/spec/util"
    testing_paths.testrun_dir = base_dir .. "/testrun"
@@ -924,9 +926,12 @@ function test_env.main()
    end
 
    -- luacov is needed for both minimal or full environment
-   table.insert(urls, "/luacov-0.11.0-1.rockspec")
-   table.insert(urls, "/luacov-0.11.0-1.src.rock")
+   table.insert(urls, "/luacov-0.13.0-1.rockspec")
+   table.insert(urls, "/luacov-0.13.0-1.src.rock")
+   table.insert(urls, "/cluacov-0.1.1-1.rockspec")
+   table.insert(urls, "/cluacov-0.1.1-1.src.rock")
    table.insert(rocks, "luacov")
+   table.insert(rocks, "cluacov")
 
    -- Download rocks needed for LuaRocks testing environment
    lfs.mkdir(testing_paths.testing_server)

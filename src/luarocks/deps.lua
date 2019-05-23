@@ -129,12 +129,13 @@ function deps.report_missing_dependencies(name, version, dependencies, deps_mode
    end
 end
 
-function deps.fulfill_dependency(dep, deps_mode, name, version, rocks_provided)
+function deps.fulfill_dependency(dep, deps_mode, name, version, rocks_provided, verify)
    assert(dep:type() == "query")
    assert(type(deps_mode) == "string" or deps_mode == nil)
    assert(type(name) == "string" or name == nil)
    assert(type(version) == "string" or version == nil)
    assert(type(rocks_provided) == "table" or rocks_provided == nil)
+   assert(type(verify) == "boolean" or verify == nil)
    deps_mode = deps_mode or "all"
    rocks_provided = rocks_provided or {}
 
@@ -164,12 +165,17 @@ function deps.fulfill_dependency(dep, deps_mode, name, version, rocks_provided)
       return nil, "Failed matching dependencies"
    end
 
-   local url, search_err = search.find_suitable_rock(dep)
+   local url, search_err = search.find_suitable_rock(dep, true)
    if not url then
       return nil, "Could not satisfy dependency "..tostring(dep)..": "..search_err
    end
    util.printout("Installing "..url)
-   local ok, install_err, errcode = install.command({deps_mode = deps_mode, namespace = dep.namespace}, url)
+   local install_flags = {
+      deps_mode = deps_mode,
+      namespace = dep.namespace,
+      verify = verify,
+   }
+   local ok, install_err, errcode = install.command(install_flags, url)
    if not ok then
       return nil, "Failed installing dependency: "..url.." - "..install_err, errcode
    end
@@ -183,12 +189,20 @@ end
 -- Packages are installed using the LuaRocks "install" command.
 -- Aborts the program if a dependency could not be fulfilled.
 -- @param rockspec table: A rockspec in table format.
--- @param depskey table: Rockspec key to fetch to get dependency table.
+-- @param depskey string: Rockspec key to fetch to get dependency table.
+-- @param deps_mode string
+-- @param verify boolean
 -- @return boolean or (nil, string, [string]): True if no errors occurred, or
 -- nil and an error message if any test failed, followed by an optional
 -- error code.
-function deps.fulfill_dependencies(rockspec, depskey, deps_mode)
+function deps.fulfill_dependencies(rockspec, depskey, deps_mode, verify)
+   assert(type(rockspec) == "table")
+   assert(type(depskey) == "string")
+   assert(type(deps_mode) == "string")
+   assert(type(verify) == "boolean" or verify == nil)
+
    if rockspec.supported_platforms and next(rockspec.supported_platforms) then
+      local all_negative = true
       local supported = false
       for _, plat in pairs(rockspec.supported_platforms) do
          local neg
@@ -198,13 +212,14 @@ function deps.fulfill_dependencies(rockspec, depskey, deps_mode)
                return nil, "This rockspec for "..rockspec.package.." does not support "..plat.." platforms."
             end
          else
+            all_negative = false
             if cfg.is_platform(plat) then
                supported = true
                break
             end
          end
       end
-      if supported == false then
+      if supported == false and not all_negative then
          local plats = cfg.print_platforms()
          return nil, "This rockspec for "..rockspec.package.." does not support "..plats.." platforms."
       end
@@ -214,7 +229,7 @@ function deps.fulfill_dependencies(rockspec, depskey, deps_mode)
 
    util.printout()
    for _, dep in ipairs(rockspec[depskey]) do
-      local ok, err = deps.fulfill_dependency(dep, deps_mode, rockspec.name, rockspec.version, rockspec.rocks_provided)
+      local ok, err = deps.fulfill_dependency(dep, deps_mode, rockspec.name, rockspec.version, rockspec.rocks_provided, verify)
       if not ok then
          return nil, err
       end
@@ -266,13 +281,10 @@ local function get_external_deps_dirs(mode)
    return dirs
 end
 
-local function check_external_dependency_at(extdir, name, ext_files, vars, dirs, err_files)
-   local fs = require("luarocks.fs")
-   local prefix = vars[name.."_DIR"]
-   if not prefix then
-      prefix = extdir
-   end
-   if type(prefix) == "table" then
+local function resolve_prefix(prefix, dirs)
+   if type(prefix) == "string" then
+      return prefix
+   elseif type(prefix) == "table" then
       if prefix.bin then
          dirs.BINDIR.subdir = prefix.bin
       end
@@ -284,8 +296,14 @@ local function check_external_dependency_at(extdir, name, ext_files, vars, dirs,
       if prefix.lib then
          dirs.LIBDIR.subdir = prefix.lib
       end
-      prefix = prefix.prefix
+      return prefix.prefix
    end
+end
+
+local function check_external_dependency_at(prefix, name, ext_files, vars, dirs, err_files, cache)
+   local fs = require("luarocks.fs")
+   cache = cache or {}
+
    for dirname, dirdata in util.sortedpairs(dirs) do
       local paths
       local path_var_value = vars[name.."_"..dirname]
@@ -331,7 +349,10 @@ local function check_external_dependency_at(extdir, name, ext_files, vars, dirs,
 
             for _, d in ipairs(paths) do
                if pattern then
-                  for entry in fs.dir(d) do
+                  if not cache[d] then
+                     cache[d] = fs.list_dir(d)
+                  end
+                  for _, entry in ipairs(cache[d]) do
                      if entry:match(pattern) then
                         found = true
                         break
@@ -366,19 +387,29 @@ local function check_external_dependency_at(extdir, name, ext_files, vars, dirs,
    return true
 end
 
-local function check_external_dependency(name, ext_files, vars, mode)
-   local err_files = {program = {}, header = {}, library = {}}
+local function check_external_dependency(name, ext_files, vars, mode, cache)
+   local ok
    local err_dirname
    local err_testfile
-   for _, extdir in ipairs(cfg.external_deps_dirs) do
-      local dirs = get_external_deps_dirs(mode)
+   local err_files = {program = {}, header = {}, library = {}}
+
+   local dirs = get_external_deps_dirs(mode)
+   
+   local prefixes
+   if vars[name .. "_DIR"] then
+      prefixes = { vars[name .. "_DIR"] }
+   else
+      prefixes = cfg.external_deps_dirs
+   end
+   
+   for _, prefix in ipairs(prefixes) do
+      prefix = resolve_prefix(prefix, dirs)
       if cfg.is_platform("mingw32") and name == "LUA" then
          dirs.LIBDIR.pattern = fun.filter(util.deep_copy(dirs.LIBDIR.pattern), function(s)
             return not s:match("%.a$")
          end)
       end
-      local ok
-      ok, err_dirname, err_testfile = check_external_dependency_at(extdir, name, ext_files, vars, dirs, err_files)
+      ok, err_dirname, err_testfile = check_external_dependency_at(prefix, name, ext_files, vars, dirs, err_files, cache)
       if ok then
          return true
       end
@@ -517,8 +548,9 @@ function deps.check_lua(vars)
    if cfg.luajit_version then
       table.insert(libnames, 1, "luajit-" .. cfg.lua_version)
    end
+   local cache = {}
    for _, libname in ipairs(libnames) do
-      local ok = check_external_dependency("LUA", { library = libname }, vars, "build")
+      local ok = check_external_dependency("LUA", { library = libname }, vars, "build", cache)
       if ok then
          vars.LUALIB = vars.LUA_LIBDIR_FILE
          return true

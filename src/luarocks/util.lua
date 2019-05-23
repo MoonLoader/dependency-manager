@@ -100,11 +100,13 @@ local supported_flags = {
    ["force"] = true,
    ["force-fast"] = true,
    ["from"] = "<server>",
+   ["global"] = true,
    ["help"] = true,
    ["home"] = true,
    ["homepage"] = "\"<url>\"",
    ["index"] = true,
    ["issues"] = true,
+   ["json"] = true,
    ["keep"] = true,
    ["labels"] = true,
    ["lib"] = "<library>",
@@ -125,6 +127,7 @@ local supported_flags = {
    ["mversion"] = true,
    ["namespace"] = "<namespace>",
    ["no-bin"] = true,
+   ["no-doc"] = true,
    ["no-refresh"] = true,
    ["nodeps"] = true,
    ["old-versions"] = true,
@@ -147,7 +150,9 @@ local supported_flags = {
    ["rock-trees"] = true,
    ["rockspec"] = true,
    ["rockspec-format"] = "<ver>",
+   ["scope"] = "<system|user|project>",
    ["server"] = "<server>",
+   ["sign"] = true,
    ["skip-pack"] = true,
    ["source"] = true,
    ["summary"] = "\"<text>\"",
@@ -158,8 +163,10 @@ local supported_flags = {
    ["timeout"] = "<seconds>",
    ["to"] = "<path>",
    ["tree"] = "<path>",
+   ["unset"] = true,
    ["user-config"] = true,
    ["verbose"] = true,
+   ["verify"] = true,
    ["version"] = true,
 }
 
@@ -351,7 +358,16 @@ function util.this_program(default)
       cur = dbg.source
       i=i+1
    end
-   return last:sub(1,1) == "@" and last:sub(2) or last
+   local prog = last:sub(1,1) == "@" and last:sub(2) or last
+
+   -- Check if we found the true path of a script that has a wrapper
+   local lrdir, binpath = prog:match("^(.*)/lib/luarocks/rocks%-[0-9.]*/[^/]+/[^/]+(/bin/[^/]+)$")
+   if lrdir then
+      -- Return the wrapper instead
+      return lrdir .. binpath
+   end
+
+   return prog
 end
 
 function util.deps_mode_help(program)
@@ -517,4 +533,185 @@ function util.deep_copy(tbl)
    return copy
 end
 
+-- An ode to the multitude of JSON libraries out there...
+function util.require_json()
+   local list = { "cjson", "dkjson", "json" }
+   for _, lib in ipairs(list) do
+      local json_ok, json = pcall(require, lib)
+      if json_ok then
+         pcall(json.use_lpeg) -- optional feature in dkjson
+         return json_ok, json
+      end
+   end
+   local errmsg = "Failed loading "
+   for i, name in ipairs(list) do
+      if i == #list then
+         errmsg = errmsg .."and '"..name.."'. Use 'luarocks search <partial-name>' to search for a library and 'luarocks install <name>' to install one."
+      else
+         errmsg = errmsg .."'"..name.."', "
+      end
+   end
+   return nil, errmsg
+end
+
+-- A portable version of fs.exists that can be used at early startup,
+-- before the platform has been determined and luarocks.fs has been
+-- initialized.
+function util.exists(file)
+   local fd, _, code = io.open(file, "r")
+   if code == 13 then
+      -- code 13 means "Permission denied" on both Unix and Windows
+      -- io.open on folders always fails with code 13 on Windows
+      return true
+   end
+   if fd then
+      fd:close()
+      return true
+   end
+   return false
+end
+
+do
+   local function Q(pathname)
+      if pathname:match("^.:") then
+         return pathname:sub(1, 2) .. '"' .. pathname:sub(3) .. '"'
+      end
+      return '"' .. pathname .. '"'
+   end
+
+   function util.check_lua_version(lua_exe, luaver)
+      if not util.exists(lua_exe) then
+         return nil
+      end
+      local lv, err = util.popen_read(Q(lua_exe) .. ' -e "io.write(_VERSION:sub(5))"')
+      if luaver and luaver ~= lv then
+         return nil
+      end
+      local ljv
+      if lv == "5.1" then
+         ljv = util.popen_read(Q(lua_exe) .. ' -e "io.write(tostring(jit and jit.version:sub(8)))"')
+         if ljv == "nil" then
+            ljv = nil
+         end
+      end
+      return lv, ljv
+   end
+
+   local find_lua_bindir
+   do
+      local exe_suffix = (package.config:sub(1, 1) == "\\" and ".exe" or "")
+
+      local function insert_lua_variants(names, luaver)
+         local variants = {
+            "lua" .. luaver .. exe_suffix,
+            "lua" .. luaver:gsub("%.", "") .. exe_suffix,
+            "lua-" .. luaver .. exe_suffix,
+            "lua-" .. luaver:gsub("%.", "") .. exe_suffix,
+         }
+         for _, name in ipairs(variants) do
+            names[name] = luaver
+            table.insert(names, name)
+         end
+      end
+
+      find_lua_bindir = function(prefix, luaver)
+         local names = {}
+         if luaver then
+            insert_lua_variants(names, luaver)
+         else
+            for v in util.lua_versions("descending") do
+               insert_lua_variants(names, v)
+            end
+         end
+         if luaver == "5.1" or not luaver then
+            table.insert(names, "luajit" .. exe_suffix)
+         end
+         table.insert(names, "lua" .. exe_suffix)
+
+         local bindirs = { prefix .. "/bin", prefix }
+         local tried = {}
+         for _, d in ipairs(bindirs) do
+            for _, name in ipairs(names) do
+               local lua_exe = d .. "/" .. name
+               local is_wrapper, err = util.lua_is_wrapper(lua_exe)
+               if is_wrapper == false then
+                  local lv, ljv = util.check_lua_version(lua_exe, luaver)
+                  if lv then
+                     return name, d, lv, ljv
+                  end
+               elseif is_wrapper == true or err == nil then
+                  table.insert(tried, lua_exe)
+               else
+                  table.insert(tried, string.format("%-13s (%s)", lua_exe, err))
+               end
+            end
+         end
+         local interp = luaver
+                        and ("Lua " .. luaver .. " interpreter")
+                        or  "Lua interpreter"
+         return nil, interp .. " not found at " .. prefix .. "\n" ..
+                     "Tried:\t" .. table.concat(tried, "\n\t")
+      end
+   end
+
+   function util.find_lua(prefix, luaver)
+      local lua_interpreter, bindir, luajitver
+      lua_interpreter, bindir, luaver, luajitver = find_lua_bindir(prefix, luaver)
+      if not lua_interpreter then
+         return nil, bindir
+      end
+
+      return {
+         lua_version = luaver,
+         luajit_version = luajitver,
+         lua_interpreter = lua_interpreter,
+         lua_dir = prefix,
+         lua_bindir = bindir,
+      }
+   end
+end
+
+function util.lua_is_wrapper(interp)
+   local fd, err = io.open(interp, "r")
+   if not fd then
+      return nil, err
+   end
+   local data, err = fd:read(1000)
+   fd:close()
+   if not data then
+      return nil, err
+   end
+   return not not data:match("LUAROCKS_SYSCONFDIR")
+end
+
+function util.opts_table(type_name, valid_opts)
+   local opts_mt = {}
+   
+   opts_mt.__index = opts_mt
+   
+   function opts_mt.type()
+      return type_name
+   end
+
+   return function(opts)
+      for k, v in pairs(opts) do
+         local tv = type(v)
+         if not valid_opts[k] then
+            error("invalid option: "..k)
+         end
+         local vo, optional = valid_opts[k]:match("^(.-)(%??)$")
+         if not (tv == vo or (optional == "?" and tv == nil)) then
+            error("invalid type option: "..k.." - got "..tv..", expected "..vo)
+         end
+      end
+      for k, v in pairs(valid_opts) do
+         if (not v:find("?", 1, true)) and opts[k] == nil then
+            error("missing option: "..k)
+         end
+      end
+      return setmetatable(opts, opts_mt)
+   end
+end
+
 return util
+

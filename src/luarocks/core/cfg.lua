@@ -19,7 +19,7 @@ local sysdetect = require("luarocks.core.sysdetect")
 
 --------------------------------------------------------------------------------
 
-local program_version = "3.0.4"
+local program_version = "dev"
 local program_series = "3.0"
 local major_version = (program_version:match("([^.]%.[^.])")) or program_series
 
@@ -47,14 +47,17 @@ local platform_order = {
    "mingw32",
 }
 
-local function detect_sysconfdir(lua_version)
+local function detect_sysconfdir()
    local src = debug.getinfo(1, "S").source:gsub("\\", "/"):gsub("/+", "/")
+   if src:sub(1, 1) == "@" then
+      src = src:sub(2)
+   end
    local basedir = src:match("^(.*)/luarocks/core/cfg.lua$")
    if not basedir then
       return
    end
    -- If installed in a Unix-like tree, use a Unix-like sysconfdir
-   local installdir = basedir:match("^(.*)/share/lua/" .. lua_version .. "$")
+   local installdir = basedir:match("^(.*)/share/lua/[^/]*$")
    if installdir then
       if installdir == "/usr" then
          return "/etc/luarocks"
@@ -74,7 +77,7 @@ local function set_confdirs(cfg, platforms, hardcoded_sysconfdir)
       cfg.sysconfdir = sysconfdir or ((os.getenv("PROGRAMFILES") or "c:") .. "/luarocks")
    else
       if not sysconfdir then
-         sysconfdir = detect_sysconfdir(cfg.lua_version)
+         sysconfdir = detect_sysconfdir()
       end
       cfg.home = os.getenv("HOME") or ""
       cfg.home_tree = (os.getenv("USER") ~= "root") and cfg.home.."/.luarocks"
@@ -134,7 +137,7 @@ do
    end
 
    -- Load config file and merge its contents into the `cfg` module table.
-   -- @return filepath of succesfully loaded file or nil if it failed
+   -- @return filepath of successfully loaded file or nil if it failed
    load_config_file = function(cfg, platforms, filepath)
       local result, err, errcode = persist.load_into_table(filepath, env_for_config_file(cfg, platforms))
       if (not result) and errcode ~= "open" then
@@ -186,6 +189,10 @@ local function make_defaults(lua_version, target_cpu, platforms, home)
       deps_mode = "one",
       check_certificates = false,
 
+      cache_timeout = 60,
+      cache_fail_timeout = 86400,
+      version_check_on_fail = true,
+
       lua_modules_path = "/share/lua/"..lua_version,
       lib_modules_path = "/lib/lua/"..lua_version,
       rocks_subdir = "/lib/luarocks/rocks-"..lua_version,
@@ -227,6 +234,8 @@ local function make_defaults(lua_version, target_cpu, platforms, home)
          SVN = "svn",
          HG = "hg",
 
+         GPG = "gpg",
+
          RSYNC = "rsync",
          WGET = "wget",
          SCP = "scp",
@@ -239,7 +248,6 @@ local function make_defaults(lua_version, target_cpu, platforms, home)
          LS = "ls",
          RM = "rm",
          FIND = "find",
-         TEST = "test",
          CHMOD = "chmod",
          ICACLS = "icacls",
          MKTEMP = "mktemp",
@@ -253,15 +261,12 @@ local function make_defaults(lua_version, target_cpu, platforms, home)
          MD5SUM = "md5sum",
          OPENSSL = "openssl",
          MD5 = "md5",
-         STAT = "stat",
          TOUCH = "touch",
 
          CMAKE = "cmake",
          SEVENZ = "7z",
 
          RSYNCFLAGS = "--exclude=.git -Oavz",
-         STATPERMFLAG = "-c '%a'",
-         STATOWNERFLAG = "-c '%U'",
          CURLNOCERTFLAG = "",
          WGETNOCERTFLAG = "",
       },
@@ -413,8 +418,6 @@ local function make_defaults(lua_version, target_cpu, platforms, home)
 
    if platforms.bsd then
       defaults.variables.MAKE = "gmake"
-      defaults.variables.STATPERMFLAG = "-f '%OLp'"
-      defaults.variables.STATOWNERFLAG = "-f '%Su'"
    end
 
    if platforms.macosx then
@@ -422,8 +425,6 @@ local function make_defaults(lua_version, target_cpu, platforms, home)
       defaults.external_lib_extension = "dylib"
       defaults.arch = "macosx-"..target_cpu
       defaults.variables.LIBFLAG = "-bundle -undefined dynamic_lookup -all_load"
-      defaults.variables.STAT = "/usr/bin/stat"
-      defaults.variables.STATFLAG = "-f '%A'"
       local version = util.popen_read("sw_vers -productVersion")
       version = tonumber(version and version:match("^[^.]+%.([^.]+)")) or 3
       if version >= 10 then
@@ -532,8 +533,8 @@ local cfg = {}
 
 --- Initializes the LuaRocks configuration for variables, paths
 -- and OS detection.
--- @param lua_data table containing information pertaining the location
--- of Lua in the environment. All fields below are optional:
+-- @param detected table containing information detected about the 
+-- environment. All fields below are optional:
 -- * lua_version (in x.y format, e.g. "5.3")
 -- * luajit_version (complete, e.g. "2.1.0-beta3")
 -- * lua_bindir (e.g. "/usr/local/bin")
@@ -541,25 +542,25 @@ local cfg = {}
 -- * lua_libdir(e.g. "/usr/local/lib")
 -- * lua_dir (e.g. "/usr/local")
 -- * lua_interpreter (e.g. "lua-5.3")
--- @param project_dir a string with the path of the project directory
--- when using per-project environments, as created with `luarocks init`
+-- * project_dir (a string with the path of the project directory
+--   when using per-project environments, as created with `luarocks init`)
 -- @param warning a logging function for warnings that takes a string
 -- @return true on success; nil and an error message on failure.
-function cfg.init(lua_data, project_dir, warning)
-   lua_data = lua_data or {}
+function cfg.init(detected, warning)
+   detected = detected or {}
 
    local hc_ok, hardcoded = pcall(require, "luarocks.core.hardcoded")
    if not hc_ok then
       hardcoded = {}
    end
 
-   local lua_version = lua_data.lua_version or hardcoded.LUA_VERSION or _VERSION:sub(5)
-   local luajit_version = lua_data.luajit_version or hardcoded.LUAJIT_VERSION or (jit and jit.version:sub(8))
-   local lua_interpreter = lua_data.lua_interpreter or hardcoded.LUA_INTERPRETER or (arg and arg[-1] and arg[-1]:gsub(".*[\\/]", "")) or (is_windows and "lua.exe" or "lua")
-   local lua_bindir = lua_data.lua_bindir or hardcoded.LUA_BINDIR or (arg and arg[-1] and arg[-1]:gsub("[\\/][^\\/]+$", ""))
-   local lua_incdir = lua_data.lua_incdir or hardcoded.LUA_INCDIR
-   local lua_libdir = lua_data.lua_libdir or hardcoded.LUA_LIBDIR
-   local lua_dir = lua_data.lua_dir or hardcoded.LUA_DIR
+   local lua_version = detected.lua_version or hardcoded.LUA_VERSION or _VERSION:sub(5)
+   local luajit_version = detected.luajit_version or hardcoded.LUAJIT_VERSION or (jit and jit.version:sub(8))
+   local lua_interpreter = detected.lua_interpreter or hardcoded.LUA_INTERPRETER or (arg and arg[-1] and arg[-1]:gsub(".*[\\/]", "")) or (is_windows and "lua.exe" or "lua")
+   local lua_bindir = detected.lua_bindir or hardcoded.LUA_BINDIR or (arg and arg[-1] and arg[-1]:gsub("[\\/][^\\/]+$", ""))
+   local lua_incdir = detected.lua_incdir or hardcoded.LUA_INCDIR
+   local lua_libdir = detected.lua_libdir or hardcoded.LUA_LIBDIR
+   local lua_dir = detected.lua_dir or hardcoded.LUA_DIR or (lua_bindir and lua_bindir:gsub("[\\/]bin$", ""))
    
    local init = cfg.init
 
@@ -635,8 +636,8 @@ function cfg.init(lua_data, project_dir, warning)
       local name = "config-"..cfg.lua_version..".lua"
       sys_config_file = (cfg.sysconfdir .. "/" .. name):gsub("\\", "/")
       home_config_file = (cfg.homeconfdir .. "/" .. name):gsub("\\", "/")
-      if project_dir then
-         project_config_file = project_dir .. "/.luarocks/" .. name
+      if detected.project_dir then
+         project_config_file = detected.project_dir .. "/.luarocks/" .. name
       end
    end
 
@@ -679,7 +680,7 @@ function cfg.init(lua_data, project_dir, warning)
       end
 
       -- finally, use the project-specific config file if any
-      if project_dir then
+      if detected.project_dir then
          project_config_ok, err = load_config_file(cfg, platforms, project_config_file)
          if err then
             return nil, err, "config"
@@ -692,14 +693,14 @@ function cfg.init(lua_data, project_dir, warning)
    -- Let's finish up the cfg table.
    ----------------------------------------
 
-   -- Settings given via lua_data (i.e. --lua-dir) take precedence over config files:
-   cfg.lua_version = lua_data.lua_version or cfg.lua_version
-   cfg.luajit_version = lua_data.luajit_version or cfg.luajit_version
-   cfg.lua_interpreter = lua_data.lua_interpreter or cfg.lua_interpreter
-   cfg.variables.LUA_BINDIR = lua_data.lua_bindir or cfg.variables.LUA_BINDIR or lua_bindir
-   cfg.variables.LUA_INCDIR = lua_data.lua_incdir or cfg.variables.LUA_INCDIR or lua_incdir
-   cfg.variables.LUA_LIBDIR = lua_data.lua_libdir or cfg.variables.LUA_LIBDIR or lua_libdir
-   cfg.variables.LUA_DIR = lua_data.lua_dir or cfg.variables.LUA_DIR or lua_dir
+   -- Settings detected or given via the CLI (i.e. --lua-dir) take precedence over config files:
+   cfg.lua_version = detected.lua_version or cfg.lua_version
+   cfg.luajit_version = detected.luajit_version or cfg.luajit_version
+   cfg.lua_interpreter = detected.lua_interpreter or cfg.lua_interpreter
+   cfg.variables.LUA_BINDIR = detected.lua_bindir or cfg.variables.LUA_BINDIR or lua_bindir
+   cfg.variables.LUA_INCDIR = detected.lua_incdir or cfg.variables.LUA_INCDIR or lua_incdir
+   cfg.variables.LUA_LIBDIR = detected.lua_libdir or cfg.variables.LUA_LIBDIR or lua_libdir
+   cfg.variables.LUA_DIR = detected.lua_dir or cfg.variables.LUA_DIR or lua_dir
 
    -- Build a default list of rocks trees if not given
    if cfg.rocks_trees == nil then
@@ -707,7 +708,7 @@ function cfg.init(lua_data, project_dir, warning)
       if cfg.home_tree then
          table.insert(cfg.rocks_trees, { name = "user", root = cfg.home_tree } )
       end
-      if hardcoded.PREFIX then
+      if hardcoded.PREFIX and hardcoded.PREFIX ~= cfg.home_tree then
          table.insert(cfg.rocks_trees, { name = "system", root = hardcoded.PREFIX } )
       end
    end
@@ -715,9 +716,9 @@ function cfg.init(lua_data, project_dir, warning)
    local defaults = make_defaults(lua_version, processor, platforms, cfg.home)
 
    if platforms.windows and hardcoded.WIN_TOOLS then
-      local tools = { "SEVENZ", "CP", "FIND", "LS", "MD5SUM", "PWD", "RMDIR", "TEST", "WGET", "MKDIR" }
+      local tools = { "SEVENZ", "CP", "FIND", "LS", "MD5SUM", "PWD", "RMDIR", "WGET", "MKDIR" }
       for _, tool in ipairs(tools) do
-         defaults.variables[tool] = hardcoded.WIN_TOOLS .. "/" .. defaults.variables[tool] .. ".exe"
+         defaults.variables[tool] = '"' .. hardcoded.WIN_TOOLS .. "/" .. defaults.variables[tool] .. '.exe"'
       end
    else
       defaults.fs_use_modules = true
@@ -729,32 +730,30 @@ function cfg.init(lua_data, project_dir, warning)
    cfg.variables.LUA = cfg.variables.LUA or (cfg.variables.LUA_BINDIR and (cfg.variables.LUA_BINDIR .. "/" .. cfg.lua_interpreter):gsub("//", "/"))
    cfg.user_agent = "LuaRocks/"..cfg.program_version.." "..cfg.arch
 
+   cfg.config_files = {
+      project = detected.project_dir and {
+         file = project_config_file,
+         found = not not project_config_ok,
+      },
+      system = {
+         file = sys_config_file,
+         found = not not sys_config_ok,
+      },
+      user = {
+         file = home_config_file,
+         found = not not home_config_ok,
+      },
+      nearest = project_config_ok
+                and project_config_file
+                or (home_config_ok
+                    and home_config_file
+                    or sys_config_file),
+   }
+
    ----------------------------------------
    -- Attributes of cfg are set.
    -- Let's add some methods.
    ----------------------------------------
-
-   function cfg.which_config()
-      return {
-         project = project_dir and {
-            file = project_config_file,
-            ok = project_config_ok,
-         },
-         system = {
-            file = sys_config_file,
-            ok = sys_config_ok,
-         },
-         user = {
-            file = home_config_file,
-            ok = home_config_ok,
-         },
-         nearest = project_config_ok
-                   and project_config_file
-                   or (home_config_ok
-                       and home_config_file
-                       or sys_config_file),
-      }
-   end
 
    do
       local function make_paths_from_tree(tree)
@@ -817,7 +816,12 @@ function cfg.init(lua_data, project_dir, warning)
    end
 
    function cfg.print_platforms()
-      return table.concat(platforms, ", ")
+      local platform_keys = {}
+      for k,_ in pairs(platforms) do
+         table.insert(platform_keys, k)
+      end
+      table.sort(platform_keys)
+      return table.concat(platform_keys, ", ")
    end
 
    return true
