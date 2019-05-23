@@ -11,7 +11,7 @@ REM lib and libstd paths are set by luarocks
 IF "%LUA_PATH%"=="" (
 	SET "LUA_PATH=.\?.lua;.\?\init.lua"
 )
-SET "LUA_PATH=%LUA_PATH%;%LIB_PATH%\?.luac;%LIB_PATH%\?\init.luac;%LUAROCKS_PATH%\lua\?.lua;%LUAROCKS_PATH%\lua\?\init.lua"
+SET "LUA_PATH=%LUA_PATH%;%LIBSTD_PATH%\?.lua;%LIBSTD_PATH%\?\init.lua;%LIB_PATH%\?.luac;%LIB_PATH%\?\init.luac;%LUAROCKS_PATH%\lua\?.lua;%LUAROCKS_PATH%\lua\?\init.lua"
 IF "%LUA_CPATH%"=="" (
 	SET "LUA_CPATH=.\?.dll"
 )
