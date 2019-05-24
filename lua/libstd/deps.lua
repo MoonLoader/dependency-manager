@@ -2,23 +2,6 @@
 -- Licensed under the MIT License.
 -- Copyright (c) 2018, BlastHack Team <blast.hk>
 
--- DEBUG
-if not getWorkingDirectory then
-	local ffi = require 'ffi'
-	ffi.cdef [[unsigned long GetCurrentDirectoryA(unsigned long nBufferLength, char* lpBuffer);]]
-	function getWorkingDirectory()
-		local buf = ffi.new('char[260]')
-		local written = ffi.C.GetCurrentDirectoryA(ffi.sizeof(buf), buf)
-		if written > 0 then
-			return ffi.string(buf, written)
-		end
-		return '.'
-	end
-end
-if not script then
-	script = {this = {filename = 'debug.lua'}}
-end
-
 local workdir = getWorkingDirectory()
 
 local config = {
@@ -67,7 +50,7 @@ end
 local luarocks_luapath = config.PREFIX .. [[\lua\?.lua;]] .. config.PREFIX .. [[\lua\?\init.lua]]
 local function run_luarocks(cmd)
 	local interpreter = config.LUA_BINDIR .. '\\' .. config.LUA_INTERPRETER
-	local luarocks_cmd = ('"%s" "-e package.path=[[%s]]" "%s\\luarocks.lua" --tree=lib %s 2>&1'):format(interpreter, luarocks_luapath, config.PREFIX, cmd)
+	local luarocks_cmd = ('"%s" "-e package.path=[[%s]]" "%s\\luarocks.lua" --tree=lib --deps-mode=order %s 2>&1'):format(interpreter, luarocks_luapath, config.PREFIX, cmd)
 	local proc = io.popen(luarocks_cmd)
 	local output = proc:read('*all')
 	local result = proc:close()
@@ -201,7 +184,7 @@ local function batch_install(packages)
 		time_install = os.clock() - time_install
 	end
 	-- DEBUG
-	local dbgmsg = ('[DEBUG] Installed check took %.3fs.'):format(time_test)
+	local dbgmsg = ('Installed check took %.3fs.'):format(time_test)
 	if #to_install > 0 then
 		logdebug(dbgmsg, ('Installation of %d packages took %.2fs. Total %.2fs.'):format(#to_install, time_install, time_test + time_install))
 		-- v.027 feature: suspend main thread until all scripts are loaded
