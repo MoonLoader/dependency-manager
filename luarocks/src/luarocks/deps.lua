@@ -11,6 +11,7 @@ local util = require("luarocks.util")
 local vers = require("luarocks.core.vers")
 local queries = require("luarocks.queries")
 local builtin = require("luarocks.build.builtin")
+local fs = require("luarocks.fs")
 
 --- Attempt to match a dependency to an installed rock.
 -- @param dep table: A dependency parsed in table format.
@@ -463,6 +464,17 @@ function deps.check_external_deps(rockspec, mode)
    return true
 end
 
+local function find_local_rockspec(name, version, deps_mode)
+   local rockspec_path
+   path.map_trees(deps_mode, function(tree)
+      local p = path.rockspec_file(name, version, tree)
+      if not rockspec_path and fs.exists(p) then
+         rockspec_path = p
+      end
+   end)
+   return rockspec_path
+end
+
 --- Recursively add satisfied dependencies of a package to a table,
 -- to build a transitive closure of all dependent packages.
 -- Additionally ensures that `dependencies` table of the manifest is up-to-date.
@@ -488,7 +500,12 @@ function deps.scan_deps(results, manifest, name, version, deps_mode)
    local dependencies = mdn[version]
    local rocks_provided
    if not dependencies then
-      local rockspec, err = fetch.load_local_rockspec(path.rockspec_file(name, version), false)
+      local rockspec_path = find_local_rockspec(name, version, deps_mode)
+      if not rockspec_path then
+         util.printerr("Couldn't find rockspec for "..name.." "..version)
+         return
+      end
+      local rockspec, err = fetch.load_local_rockspec(rockspec_path, false)
       if not rockspec then
          util.printerr("Couldn't load rockspec for "..name.." "..version..": "..err)
          return
