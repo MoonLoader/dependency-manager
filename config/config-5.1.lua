@@ -25,3 +25,4 @@ variables = {
 }
 
 verbose = false   -- set to 'true' to enable verbose output
+deps_mode = 'order'
