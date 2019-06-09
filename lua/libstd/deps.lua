@@ -5,13 +5,13 @@
 local workdir = getWorkingDirectory()
 
 local config = {
-	PREFIX          = workdir .. [[\luarocks]],
-	WIN_TOOLS       = workdir .. [[\luarocks\tools]],
-	SYSCONFDIR      = workdir .. [[\luarocks]],
-	LUA_DIR         = workdir .. [[\luajit]],
-	LUA_INCDIR      = workdir .. [[\luajit\inc]],
-	LUA_LIBDIR      = workdir .. [[\luajit\lib]],
-	LUA_BINDIR      = workdir .. [[\luajit\bin]],
+	PREFIX          = workdir..[[\luarocks]],
+	WIN_TOOLS       = workdir..[[\luarocks\tools]],
+	SYSCONFDIR      = workdir..[[\luarocks]],
+	LUA_DIR         = workdir..[[\luajit]],
+	LUA_INCDIR      = workdir..[[\luajit\inc]],
+	LUA_LIBDIR      = workdir..[[\luajit\lib]],
+	LUA_BINDIR      = workdir..[[\luajit\bin]],
 	LUA_INTERPRETER = [[luajit.exe]],
 	SYSTEM          = [[windows]],
 	PROCESSOR       = [[x86]],
@@ -19,7 +19,7 @@ local config = {
 }
 
 local function rewrite_hardcoded_config()
-	local hc = assert(io.open(config.PREFIX .. [[\lua\luarocks\core\hardcoded.lua]], 'w'))
+	local hc = assert(io.open(config.PREFIX..[[\lua\luarocks\core\hardcoded.lua]], 'w'))
 	hc:write('return {\n')
 	for k, v in pairs(config) do
 		if type(v) == 'string' then
@@ -33,7 +33,7 @@ local function rewrite_hardcoded_config()
 end
 
 local function configure()
-	local f = io.open(workdir .. [[\luarocks\path.txt]], 'r')
+	local f = io.open(workdir..[[\luarocks\path.txt]], 'r')
 	local path
 	if f then
 		path = f:read('*all')
@@ -41,7 +41,7 @@ local function configure()
 	end
 	if workdir ~= path then
 		rewrite_hardcoded_config()
-		f = assert(io.open(workdir .. [[\luarocks\path.txt]], 'w'))
+		f = assert(io.open(workdir..[[\luarocks\path.txt]], 'w'))
 		f:write(workdir)
 		f:close()
 	end
@@ -92,7 +92,7 @@ local function create_luarocks_environment()
 	package_backup.loaders = shallow_copy(package.loaders)
 	package_backup.searchers = package_backup.loaders
 	package_backup.loaded._G = env
-	env.package.path = string.format([[%s\lua\?.lua;%s\lua\?\init.lua]], config.PREFIX, config.PREFIX)
+	env.package.path = ([[%s\lua\?.lua;%s\lua\?\init.lua]]):format(config.PREFIX, config.PREFIX)
 	env.package.cpath = config.PREFIX..'\\?.dll' -- not needed actually
 	return env
 end
@@ -172,7 +172,7 @@ end
 local luarocks_install_flags
 local function install_package(name, version, server)
 	if server and not server:match('^[^:]+://(.*)') then
-		server = 'http://luarocks.org/manifests/' .. server
+		server = 'http://luarocks.org/manifests/'..server
 	end
 	return run_luarocks(function()
 		if not luarocks_install_flags then
@@ -185,7 +185,6 @@ local function install_package(name, version, server)
 				['timeout'] = 10,
 			}
 			cfg.connection_timeout = 10
-
 			-- initialize rock tree paths
 			local tree = find_rock_tree(cfg.rocks_trees, 'lib')
 			if not tree then
@@ -237,7 +236,7 @@ local function msgbox(text, title, style)
 		hwnd = ffi.cast('void*', readMemory(0x00C8CF88, 4, false))
 	end
 	showCursor(true)
-	local ret = ffi.C.MessageBoxA(hwnd, text, '[MoonLoader] ' .. script.this.filename .. ': ' .. title, (style or 0) + 0x50000)
+	local ret = ffi.C.MessageBoxA(hwnd, text, '[MoonLoader] '..script.this.filename..': '..title, (style or 0) + 0x50000)
 	showCursor(false)
 	return ret
 end
@@ -264,7 +263,7 @@ local function cleanup()
 end
 
 local function batch_install(packages)
-	print('Requested packages: ' .. table.concat(packages, ', '))
+	print('Requested packages: '..table.concat(packages, ', '))
 	local to_install = {}
 	local time_test, time_install = os.clock(), nil
 	for i, dep in ipairs(packages) do
@@ -275,17 +274,17 @@ local function batch_install(packages)
 				table.insert(to_install, {name = name, ver = version, svr = server, full = dep})
 			end
 		else
-			failure(dep .. '\n' .. result)
+			failure(dep..'\n'..result)
 		end
 	end
 	time_test = os.clock() - time_test
 	if #to_install > 0 then
 		local list = ''
 		for i, pkg in ipairs(to_install) do
-			list = list .. pkg.full .. '\n'
+			list = list..pkg.full..'\n'
 		end
-		if 7 --[[IDNO]] == msgbox('Script "' .. script.this.filename .. '" asks to install the following packages:\n\n' ..
-			list .. '\nInstallation process will take some time.\nProceed?', 'Package installation', 0x04 + 0x20 --[[MB_YESNO+MB_ICONQUESTION]])
+		if 7 --[[IDNO]] == msgbox('Script "'..script.this.filename..'" asks to install the following packages:\n\n'..
+			list..'\nInstallation process will take some time.\nProceed?', 'Package installation', 0x04 + 0x20 --[[MB_YESNO+MB_ICONQUESTION]])
 		then
 			error('Dependency installation was interrupted by user.')
 		end
@@ -293,7 +292,7 @@ local function batch_install(packages)
 		for i, pkg in ipairs(to_install) do
 			local ok, err = pcall(install_package, pkg.name, pkg.ver, pkg.svr)
 			if not ok then
-				failure(pkg.full .. '\n' .. err)
+				failure(pkg.full..'\n'..err)
 			end
 		end
 		time_install = os.clock() - time_install
