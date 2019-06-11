@@ -24,7 +24,7 @@ if /I "%1"=="without-modules" goto :EOF
 
 :: init deps manager and install modules for luarocks
 pushd distro
-call luajit\lua -e "require'deps'"
+call luajit\lua -e "getWorkingDirectory=function()return[[%cd%]]end;require'deps'"
 cd luarocks
 
 SET "LRFLAGS=--tree=libstd --only-server=http://luarocks.org/manifests/fyp"
